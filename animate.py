@@ -7,6 +7,9 @@ import multiprocessing
 import os
 from multiprocessing import shared_memory
 
+
+# remove background for dynos https://www.adobe.com/express/feature/image/remove-background
+
 # --- Main Configuration ---
 IMAGE_PATH = "pic.jpg" # Changed to .jpg
 FPS = 30
@@ -165,22 +168,35 @@ def apply_explosion(frame, p, seed):
     out_frame[dy[mask],dx[mask]] = frame[mask]
     return out_frame
 
-def apply_dino_overlay(base_frame, seed):
+def apply_dino_overlay(base_frame, seed, frame_index):
     """
-    EFFECT: Overlays ALL loaded dinosaurs at random positions with constant opacity.
+    EFFECT: Overlays TWO randomly selected dinosaurs at random positions.
+    The positions are re-randomized on each frame.
     Handles both transparent PNGs and solid-background JPGs.
     """
     if not dino_images: return base_frame
     
-    rng_dino = np.random.default_rng(seed)
+    # By including the frame_index in the seed, we get new random
+    # positions for the dinosaurs on every single frame.
+    rng_dino = np.random.default_rng(seed + frame_index)
     output_frame = base_frame.copy()
 
-    for dino_img_any_format in dino_images:
+    # Determine how many dinos to show, ensuring we don't try to show more than we have.
+    num_dinos_to_show = min(2, len(dino_images))
+    if num_dinos_to_show == 0:
+        return base_frame
+
+    # Pick unique dinosaurs to show for this frame.
+    dino_indices = rng_dino.choice(len(dino_images), size=num_dinos_to_show, replace=False)
+
+    for dino_index in dino_indices:
+        dino_img_to_show = dino_images[dino_index]
+        
         # Resize dino to a consistent, reasonable size
         scale_factor = rng_dino.uniform(0.3, 0.5)
-        new_w = int(dino_img_any_format.shape[1] * scale_factor)
-        new_h = int(dino_img_any_format.shape[0] * scale_factor)
-        dino_resized = cv2.resize(dino_img_any_format, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        new_w = int(dino_img_to_show.shape[1] * scale_factor)
+        new_h = int(dino_img_to_show.shape[0] * scale_factor)
+        dino_resized = cv2.resize(dino_img_to_show, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
         # Random position
         x_pos = rng_dino.integers(0, width - new_w)
@@ -263,7 +279,7 @@ def process_frame(frame_index):
     final_frame = glitched_frame
     if dino_event:
         # Apply the overlay effect with constant opacity
-        final_frame = apply_dino_overlay(glitched_frame, dino_event['seed'])
+        final_frame = apply_dino_overlay(glitched_frame, dino_event['seed'], frame_index)
 
     # Step 3: Convert the final frame to RGB for MoviePy.
     final_rgb_frame = cv2.cvtColor(final_frame, cv2.COLOR_BGR2RGB)
